@@ -3,8 +3,9 @@ from _thread import *
 import pickle
 import random
 import time
+from network import send_msg, recv_msg
 
-server = "localhost" # بدل هنا ل ip ديالك او لي غيكون server 
+server = "localhost" # Your machine's IP address
 port = 5555
 
 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -26,7 +27,7 @@ if COLS % 2 == 0: COLS -= 1
 if ROWS % 2 == 0: ROWS -= 1
 
 PREVIEW_TIME = 5.0
-WIN_SCORE = 10 
+WIN_SCORE = 10
 
 PLAYER_COLORS = [
     (255, 0, 0),    # أحمر
@@ -43,12 +44,12 @@ PLAYER_COLORS = [
 
 # --- Game State ---
 game_state = {
-    "status": "LOBBY", 
+    "status": "LOBBY",
     "timer": PREVIEW_TIME,
     "walls_active": True,
     "players": {},
-    "map": [],      
-    "winner_name": "" 
+    "map": [],
+    "winner_name": ""
 }
 
 def generate_maze():
@@ -66,20 +67,20 @@ def generate_maze():
                     neighbors.append((nx, ny, dx, dy))
         if neighbors:
             nx, ny, dx, dy = random.choice(neighbors)
-            map_data[y + dy//2][x + dx//2] = 0 
-            map_data[ny][nx] = 0 
+            map_data[y + dy//2][x + dx//2] = 0
+            map_data[ny][nx] = 0
             stack.append((nx, ny))
         else:
             stack.pop()
-    
-    goal_r, goal_c = ROWS - 2, COLS - 2
-    map_data[goal_r][goal_c] = 0      
-    map_data[goal_r][goal_c - 1] = 0  
-    map_data[goal_r - 1][goal_c] = 0  
-    map_data[goal_r - 1][goal_c - 1] = 0 
 
-    map_data[1][2] = 0 
-    map_data[2][1] = 0 
+    goal_r, goal_c = ROWS - 2, COLS - 2
+    map_data[goal_r][goal_c] = 0
+    map_data[goal_r][goal_c - 1] = 0
+    map_data[goal_r - 1][goal_c] = 0
+    map_data[goal_r - 1][goal_c - 1] = 0
+
+    map_data[1][2] = 0
+    map_data[2][1] = 0
 
     for r in range(1, ROWS - 1):
         for c in range(1, COLS - 1):
@@ -87,7 +88,7 @@ def generate_maze():
                 dist_start = abs(r - 1) + abs(c - 1)
                 dist_goal = abs(r - goal_r) + abs(c - goal_c)
                 if dist_start < 4 or dist_goal < 4:
-                    continue 
+                    continue
                 if random.random() < 0.08:
                     map_data[r][c] = 2
     return map_data
@@ -116,7 +117,7 @@ def game_logic_loop():
     while True:
         time.sleep(0.1)
         if game_state["status"] == "LOBBY":
-            pass 
+            pass
         elif game_state["status"] == "PREVIEW":
             game_state["timer"] -= 0.1
             if game_state["timer"] <= 0:
@@ -136,13 +137,13 @@ start_new_thread(game_logic_loop, ())
 
 def threaded_client(conn, current_player_id):
     start_info = {"id": current_player_id}
-    conn.send(pickle.dumps(start_info))
+    send_msg(conn, start_info)
 
     while True:
         try:
-            data = pickle.loads(conn.recv(2048*8))
+            data = recv_msg(conn)
             if not data: break
-            
+
 
             assigned_color = game_state["players"][current_player_id]["color"]
 
@@ -151,8 +152,8 @@ def threaded_client(conn, current_player_id):
                 current_score = game_state["players"][current_player_id]["score"]
 
             game_state["players"][current_player_id] = {
-                "x": data["x"], 
-                "y": data["y"], 
+                "x": data["x"],
+                "y": data["y"],
                 "color": assigned_color,
                 "name": data["name"],
                 "score": current_score
@@ -168,11 +169,11 @@ def threaded_client(conn, current_player_id):
                     if new_score >= WIN_SCORE:
                         game_state["status"] = "MATCH_OVER"
                         game_state["winner_name"] = data["name"]
-                        game_state["timer"] = 5.0 
+                        game_state["timer"] = 5.0
                     else:
                         reset_round()
 
-            conn.sendall(pickle.dumps(game_state))
+            send_msg(conn, game_state)
         except Exception as e:
             print(e)
             break
@@ -187,14 +188,14 @@ while True:
     conn, addr = s.accept()
 
     unique_color = PLAYER_COLORS[player_id_counter % len(PLAYER_COLORS)]
-    
+
     game_state["players"][player_id_counter] = {
         "x": TILE_SIZE + 5,
         "y": TILE_SIZE + 5,
-        "color": unique_color, 
+        "color": unique_color,
         "name": f"P{player_id_counter}",
         "score": 0
     }
-    
+
     start_new_thread(threaded_client, (conn, player_id_counter))
     player_id_counter += 1
